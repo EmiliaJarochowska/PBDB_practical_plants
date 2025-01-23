@@ -1,0 +1,135 @@
+---
+title: "Global plant diversity"
+author: "Rike Wagner-Cremer, Iris Kuipers and Emilia Jarochowska"
+format: html
+---
+
+```{r setup}
+library(paleobioDB)
+library(dplyr)
+```
+
+```{r download the occurrences}
+Pteridophyta <- pbdb_occurrences(
+  base_name = "Pteridophyta",
+  show = c("coords", "classext"),
+  vocab = "pbdb",
+  limit = "all"
+)
+```
+
+## 1. Genus richness through time	
+
+Make a graph showing the genus richness of Pteridophyta over time.
+
+```{r}
+pbdb_richness(Pteridophyta, 
+              rank = "species", 
+              temporal_extent = c(0, 540), 
+              res = 20)
+```
+What happens if you change the parameter `res` (temporal resolution)? How do you decide which resolution is the best?
+
+### Make the same plot but for all three groups: Pteridophyta, Pinophyta and Magnoliophyta.
+
+But the plot made by the `paleobioDB` package doesn't allow plotting several groups on the same plot. What now? You can exploit the fact that the function `pbdb_richness` returns not only a plot, but a dataframe of richness per bin. You can save this dataframe into an object, here called `Pteri_rich`, and use it to add the remaining two groups to the plot using standard R plotting tools.
+
+```{r}
+Pteri_rich <- pbdb_richness(Pteridophyta, 
+              rank = "genus", 
+              temporal_extent = c(0, 540), 
+              res = 20,
+              do_plot = F)
+
+barplot(names.arg = Pteri_rich$temporal_intervals,
+     height = Pteri_rich$richness)
+```
+
+Try to add the other groups on your own. You can use the parameter `add` of the `barplot` function or make a grouped barplot.
+
+### How to deal with records at different taxonomic levels?
+
+A lot of the time fossils cannot be identifed to the species level. Also the concept of species in some groups is not clear. So many analyses rely on the genus level.
+
+Look into the dataframe with the occurrences. Some are observations at the species level, some at the genus level. If you want to analyze richness at the genus level, you have to *somehow* include also those occurrences which had been made at the species level and discard the species name. E.g. one of the occurrences is *Metaclepsydropsis duplex*. You still want to count it, but as *Metaclepsydropsis*.
+And you still have to consider that some occurrences are of different taxonomic ranks!
+
+This code will show you what taxonomic ranks are present in the dataset:
+```{r}
+Pteridophyta$accepted_rank <- as.factor(Pteridophyta$accepted_rank)
+levels(Pteridophyta$accepted_rank)
+```
+
+For the rest of the practical you only need records that are *at least* at the genus level (so species, subgenus and subspecies are ok). You can remove the remaining occurrences. Observe how the dimensions of the dataframe change.
+
+```{r}
+Pteridophyta <- Pteridophyta[Pteridophyta$accepted_rank %in% c("genus", "species", "subspecies","subgenus"),]
+```
+
+Now you can extract genus names from those names which also contain species and subspecies. You will need this again so it will be handy to have a function for it. This function takes all rows where the rank is different than `genus` and extracts the first word of the name. 
+
+```{r}
+species_to_genera <- function(df) {
+  df <- df %>%
+  mutate(
+    genus_name = ifelse(
+      accepted_rank != "genus",
+      gsub(" .*", "", accepted_name),
+      accepted_name
+    )
+  )
+}
+
+# apply the function to your dataset
+Pteridophyta <- species_to_genera(Pteridophyta)
+```
+
+So now your analysis will use all the available records which *include* information about the genus.
+
+### How precisely do we know the age of a fossil occurrence?
+
+To understand the nature of occurrence data, check in the dataframe how age information is provided. Which variables contain it? What is the average, minimal and maximal time span accross the occurrences? In other words, how *precise* is the age information for each occurrence?
+
+```{r}
+calculate_duration <- function(df, max_ma, min_ma, occ_duration) {
+  df[[occ_duration]] <- df[[max_ma]] - df[[min_ma]]
+  return(df)
+}
+
+# apply it to your dataset
+Pteridophyta <- calculate_duration(Pteridophyta, "max_ma", "min_ma", "occ_duration")
+```
+
+The last column in the dataframe, `occ_duration` is now the time span assigned to the occurrence, in My.
+
+```{r}
+avg_span <- mean(Pteridophyta$occ_duration)
+hist(Pteridophyta$occ_duration,
+     xlab = "Occurrence time span [My]",
+     main = "Distribution of time spans of pteridophyte occurrences")
+abline(v = avg_span,
+       col = "red")
+```
+
+What is the average time span of an occurrence in the dataset? Does it mean the fossil lived for so long? Why are some durations so extremely long, i.e. having very low precision? If you were to cull the dataset to eliminate the most imprecisely dated occurrences, what precision would you accept as good? 
+
+# How is richness calculated?
+
+In each consecutive time bin, a given taxon may be observed or not. If there are not many outcrops of rocks of given age on Earth, this age may yield no occurrences even though the organism existed. Check how the occurrences are distributed for a genus of your choice. 
+
+```{r}
+selected_genus <- "Deltoidospora"
+Deltoidospora_df <- Pteridophyta[Pteridophyta$genus == selected_genus, ]
+```
+
+
+
+2.	Make a straight line scatter graph to visualize the difference between genera that have been entered into the database and genera that are not in the database at that time, but should have been present at that time. 
+•	Make a graph for one of the phyla.
+•	Plot only the sampled_in_bin column.
+•	Then make a new column and sum the X_bt, sampled_in_bin and implied_in_bin columns and plot this new column in the same graph.
+Questions: Do you notice a large difference between the two lines? Which of the two lines would you prefer to use? And why?
+3.	A stacked area chart of diversity over time. With this graph, you will try to replicate figure 2.
+•	Download three new datasets for the phyla. Follow the same steps as before, but now select ‘epoch’ as your temporal resolution.
+•	Load the data into excel and make the stacked area chart
+Question: how does your graph compare to figure 2, what are the similarities and differences? What do you think causes these differences?
